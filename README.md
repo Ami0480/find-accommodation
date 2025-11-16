@@ -50,32 +50,69 @@ const backgroundImageUrl = '/beach-background.jpg'
 
 Alternatively, you can use an external image URL (ensure it's served over HTTPS).
 
-### Connecting to a Real API
+### Connecting to StayAPI (Production)
 
-The current implementation uses mock data for demonstration. To connect to a real accommodation API (Booking.com, Expedia, or other providers):
+The website uses Netlify serverless functions to securely handle API calls. **API keys are never exposed in the frontend code.**
 
-1. See the detailed guide in `API_INTEGRATION.md` for step-by-step instructions
-2. Open `src/App.jsx`
-3. Find the `handleSubmit` function (around line 27)
-4. Replace the mock data section with your API call
+StayAPI provides comprehensive hotel data including real images, reviews, prices, and booking URLs.
 
-For quick reference, the API should return data in this format:
+#### Quick Setup:
+
+1. **Get StayAPI credentials** from [stayapi.com](https://stayapi.com/)
+   - Sign up for a free account
+   - Get your API key from the dashboard
+
+2. **Deploy to Netlify:**
+   - Push your code to GitHub
+   - Connect repository to Netlify
+   - Set build command: `npm run build`
+   - Set publish directory: `dist`
+
+3. **Add Environment Variables in Netlify:**
+   - Go to Site settings → Environment variables
+   - Add `STAYAPI_KEY` with your API key
+   - Redeploy your site
+
+4. **See `NETLIFY_SETUP.md` for detailed instructions**
+
+#### Local Development:
+
+1. Create a `.env` file in the root directory:
+```bash
+STAYAPI_KEY=your_stayapi_key_here
+```
+
+2. Install Netlify CLI:
+```bash
+npm install -g netlify-cli
+```
+
+3. Run with Netlify Dev:
+```bash
+netlify dev
+```
+
+This starts both the Vite dev server and Netlify Functions locally.
+
+#### API Response Format:
+
+The serverless function returns data in this format:
 ```javascript
 {
   results: [
     {
-      id: 1,
+      id: "hotel-id",
       name: "Hotel Name",
-      location: "City, Country",
+      location: "City Code",
       type: "Hotel",
-      price: "$120/night",
+      price: "$120",
       rating: 4.5,
       reviewCount: 234,
       description: "Hotel description",
       photo: "https://image-url.com/photo.jpg",
       url: "https://booking-link.com",
       reviews: [
-        { author: "John D.", rating: 5, comment: "Great stay!" }
+        { author: "Guest", rating: 5, comment: "Great stay!" }
       ]
     }
   ]
@@ -86,13 +123,18 @@ For quick reference, the API should return data in this format:
 
 ```
 find-accommodation/
+├── netlify/
+│   └── functions/
+│       └── search-accommodations.js  # Serverless function for API calls
 ├── public/              # Static assets (add your beach photo here)
 ├── src/
 │   ├── App.jsx          # Main application component
 │   ├── main.jsx         # React entry point
 │   └── index.css        # Global styles with Tailwind
 ├── index.html           # HTML template with SEO meta tags
+├── netlify.toml         # Netlify configuration
 ├── API_INTEGRATION.md   # Guide for connecting to real APIs
+├── NETLIFY_SETUP.md     # Detailed Netlify deployment guide
 └── tailwind.config.js
 ```
 

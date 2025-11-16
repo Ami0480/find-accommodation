@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import airplaneIcon from "./assets/airplane.svg";
 import carIcon from "./assets/car.svg";
 import trainIcon from "./assets/train.svg";
+import "./App.css";
 
 function App() {
   const [formData, setFormData] = useState({
@@ -14,12 +15,103 @@ function App() {
     accommodationType: "Hotel",
   });
   const [results, setResults] = useState([]);
+  const [filteredResults, setFilteredResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [cityDisplay, setCityDisplay] = useState("");
+  const [selectedHotel, setSelectedHotel] = useState(null);
+  const [filters, setFilters] = useState({
+    sortBy: "popularity", // popularity, rating, price-low, price-high, distance
+    minPrice: "",
+    maxPrice: "",
+    minRating: "",
+  });
 
-  // Background image - replace with your beach photo path
   const backgroundImageUrl =
     "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=2073&q=80";
+
+  // City name to IATA code mapping with full names
+  const cityCodeMap = {
+    "new york": { code: "NYC", name: "New York" },
+    "new york city": { code: "NYC", name: "New York" },
+    "los angeles": { code: "LAX", name: "Los Angeles" },
+    chicago: { code: "CHI", name: "Chicago" },
+    miami: { code: "MIA", name: "Miami" },
+    "san francisco": { code: "SFO", name: "San Francisco" },
+    boston: { code: "BOS", name: "Boston" },
+    seattle: { code: "SEA", name: "Seattle" },
+    "las vegas": { code: "LAS", name: "Las Vegas" },
+    orlando: { code: "ORL", name: "Orlando" },
+    washington: { code: "WAS", name: "Washington" },
+    london: { code: "LON", name: "London" },
+    paris: { code: "PAR", name: "Paris" },
+    rome: { code: "ROM", name: "Rome" },
+    barcelona: { code: "BCN", name: "Barcelona" },
+    amsterdam: { code: "AMS", name: "Amsterdam" },
+    berlin: { code: "BER", name: "Berlin" },
+    madrid: { code: "MAD", name: "Madrid" },
+    vienna: { code: "VIE", name: "Vienna" },
+    prague: { code: "PRG", name: "Prague" },
+    dublin: { code: "DUB", name: "Dublin" },
+    tokyo: { code: "TYO", name: "Tokyo" },
+    bangkok: { code: "BKK", name: "Bangkok" },
+    singapore: { code: "SIN", name: "Singapore" },
+    "hong kong": { code: "HKG", name: "Hong Kong" },
+    seoul: { code: "SEL", name: "Seoul" },
+    dubai: { code: "DXB", name: "Dubai" },
+    sydney: { code: "SYD", name: "Sydney" },
+    melbourne: { code: "MEL", name: "Melbourne" },
+    brisbane: { code: "BNE", name: "Brisbane" },
+    perth: { code: "PER", name: "Perth" },
+    adelaide: { code: "ADL", name: "Adelaide" },
+    auckland: { code: "AKL", name: "Auckland" },
+  };
+
+  // Reverse map for code to name
+  const codeToNameMap = {};
+  Object.values(cityCodeMap).forEach((city) => {
+    codeToNameMap[city.code] = city.name;
+  });
+
+  const getCityCode = (input) => {
+    const normalized = input.toLowerCase().trim();
+    if (input.length === 3) {
+      const upperCode = input.toUpperCase();
+      return { code: upperCode, name: codeToNameMap[upperCode] || upperCode };
+    }
+    const cityData = cityCodeMap[normalized];
+    if (cityData) {
+      return cityData;
+    }
+    return { code: input.toUpperCase(), name: input };
+  };
+
+  // Format location for display text
+  const displayText = (location) => {
+    if (!location) return "";
+
+    // Try to get formatted name from city code map
+    const normalized = location.toLowerCase().trim();
+    const cityData = cityCodeMap[normalized];
+
+    if (cityData && cityData.name) {
+      return cityData.name;
+    }
+
+    // If it's a 3-letter code, try to get the name
+    if (location.length === 3) {
+      const name = codeToNameMap[location.toUpperCase()];
+      if (name) {
+        return name;
+      }
+    }
+
+    // Otherwise, capitalize the first letter of each word
+    return location
+      .split(/\s+/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -29,16 +121,14 @@ function App() {
       setFormData((prev) => ({
         ...prev,
         kids: numKids,
-        // Resize childAges array to match number of children
         childAges: Array.from(
           { length: numKids },
-          (_, i) => prev.childAges[i] || 0
+          (_, i) => prev.childAges[i] || ""
         ),
       }));
     } else if (name.startsWith("childAge-")) {
-      // Handle individual child age change
       const index = parseInt(name.split("-")[1]);
-      const age = parseInt(value) || 0;
+      const age = value === "" ? "" : parseInt(value);
       setFormData((prev) => ({
         ...prev,
         childAges: prev.childAges.map((a, i) => (i === index ? age : a)),
@@ -51,6 +141,64 @@ function App() {
     }
   };
 
+  // Filter and sort results
+  const applyFilters = () => {
+    let filtered = [...results];
+
+    // Price filter
+    if (filters.minPrice) {
+      filtered = filtered.filter(
+        (r) => r.priceNumber && r.priceNumber >= parseFloat(filters.minPrice)
+      );
+    }
+    if (filters.maxPrice) {
+      filtered = filtered.filter(
+        (r) => r.priceNumber && r.priceNumber <= parseFloat(filters.maxPrice)
+      );
+    }
+
+    // Rating filter
+    if (filters.minRating) {
+      filtered = filtered.filter(
+        (r) => r.rating >= parseFloat(filters.minRating)
+      );
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (filters.sortBy) {
+        case "popularity":
+          return (b.popularityScore || 0) - (a.popularityScore || 0);
+        case "rating":
+          return (b.rating || 0) - (a.rating || 0);
+        case "price-low":
+          return (a.priceNumber || Infinity) - (b.priceNumber || Infinity);
+        case "price-high":
+          return (b.priceNumber || 0) - (a.priceNumber || 0);
+        default:
+          return 0;
+      }
+    });
+
+    setFilteredResults(filtered);
+  };
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  // Apply filters when filters or results change
+  useEffect(() => {
+    if (results.length > 0) {
+      applyFilters();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, results]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -58,147 +206,75 @@ function App() {
     setResults([]);
 
     try {
-      // API Integration
-      // Replace this section with your actual API endpoint
-      // Example for Booking.com/Expedia would require API keys
-      // For now, using enhanced mock data that simulates real API response
+      console.log("Starting API request...");
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Use location as-is for StayAPI (it accepts city names)
+      const locationForSearch = formData.location;
+      const formattedLocation = displayText(locationForSearch);
 
-      // Enhanced mock accommodation data with photos, URLs, and reviews
-      const mockResults = [
-        {
-          id: 1,
-          name: "Oceanview Resort",
-          location: formData.location || "Beachside",
-          type: formData.accommodationType,
-          price: "$120/night",
-          rating: 4.5,
-          reviewCount: 234,
-          description: "Beautiful oceanfront property with stunning views",
-          photo:
-            "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop",
-          url: "https://booking.com/hotel/oceanview-resort",
-          reviews: [
-            {
-              author: "Sarah M.",
-              rating: 5,
-              comment: "Amazing views and excellent service!",
-            },
-            {
-              author: "John D.",
-              rating: 4,
-              comment: "Great location, very clean and comfortable.",
-            },
-          ],
-        },
-        {
-          id: 2,
-          name: "Coastal Paradise Hotel",
-          location: formData.location || "Beachside",
-          type: formData.accommodationType,
-          price: "$95/night",
-          rating: 4.3,
-          reviewCount: 189,
-          description: "Comfortable stay near the beach with modern amenities",
-          photo:
-            "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&h=600&fit=crop",
-          url: "https://expedia.com/hotel/coastal-paradise",
-          reviews: [
-            {
-              author: "Emma L.",
-              rating: 5,
-              comment: "Perfect for families, kids loved it!",
-            },
-            {
-              author: "Mike T.",
-              rating: 4,
-              comment: "Good value for money, nice pool area.",
-            },
-          ],
-        },
-        {
-          id: 3,
-          name: "Sunset Beach Lodge",
-          location: formData.location || "Beachside",
-          type: formData.accommodationType,
-          price: "$110/night",
-          rating: 4.7,
-          reviewCount: 312,
-          description: "Charming lodge with easy beach access",
-          photo:
-            "https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&h=600&fit=crop",
-          url: "https://booking.com/hotel/sunset-beach-lodge",
-          reviews: [
-            {
-              author: "Lisa K.",
-              rating: 5,
-              comment: "Romantic setting, perfect sunset views!",
-            },
-            {
-              author: "David R.",
-              rating: 5,
-              comment: "Best stay of our vacation, highly recommend!",
-            },
-          ],
-        },
-        {
-          id: 4,
-          name: "Tropical Haven",
-          location: formData.location || "Beachside",
-          type: formData.accommodationType,
-          price: "$85/night",
-          rating: 4.2,
-          reviewCount: 156,
-          description: "Affordable accommodation in a great location",
-          photo:
-            "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&h=600&fit=crop",
-          url: "https://expedia.com/hotel/tropical-haven",
-          reviews: [
-            {
-              author: "Chris P.",
-              rating: 4,
-              comment: "Budget-friendly with good amenities.",
-            },
-            {
-              author: "Anna W.",
-              rating: 4,
-              comment: "Clean rooms and friendly staff.",
-            },
-          ],
-        },
-        {
-          id: 5,
-          name: "Seaside Retreat",
-          location: formData.location || "Beachside",
-          type: formData.accommodationType,
-          price: "$130/night",
-          rating: 4.6,
-          reviewCount: 278,
-          description: "Luxury accommodation with premium amenities",
-          photo:
-            "https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&h=600&fit=crop",
-          url: "https://booking.com/hotel/seaside-retreat",
-          reviews: [
-            {
-              author: "Robert H.",
-              rating: 5,
-              comment: "Luxury at its finest, worth every penny!",
-            },
-            {
-              author: "Maria G.",
-              rating: 4,
-              comment: "Beautiful property, excellent service.",
-            },
-          ],
-        },
-      ];
+      console.log(
+        `Searching for location: "${locationForSearch}" (${formattedLocation})`
+      );
 
-      setResults(mockResults);
+      const response = await fetch("/.netlify/functions/search-hotels", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          location: locationForSearch, // StayAPI accepts city names directly
+          dateFrom: formData.dateFrom,
+          dateUntil: formData.dateUntil,
+          adults: formData.adults,
+          kids: formData.kids || 0,
+          childAges: formData.childAges || [],
+          accommodationType: formData.accommodationType,
+        }),
+      });
+
+      console.log("Response status:", response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Error response:", errorText);
+        alert(`Server error (${response.status}): ${errorText}`);
+        setResults([]);
+        setCityDisplay("");
+        return;
+      }
+
+      const responseData = await response.json();
+      console.log("API response:", responseData);
+
+      // Handle the response from Netlify function
+      if (responseData.message) {
+        alert(responseData.message);
+        setResults([]);
+        setCityDisplay("");
+        return;
+      }
+
+      const hotelResults = responseData.results || [];
+
+      if (hotelResults.length === 0) {
+        alert(
+          `No hotels found for "${formattedLocation}". Try:\n- Different dates\n- Major cities: New York, London, Paris, Tokyo, Sydney, Perth`
+        );
+        setResults([]);
+        setCityDisplay("");
+        return;
+      }
+
+      console.log("Hotels found:", hotelResults.length);
+      setCityDisplay(formattedLocation);
+      setResults(hotelResults);
+      setFilteredResults(hotelResults);
+      setSelectedHotel(null);
     } catch (error) {
       console.error("Error fetching accommodations:", error);
+      alert(`Error: ${error.message}. Check console for details.`);
       setResults([]);
+      setCityDisplay("");
     } finally {
       setLoading(false);
     }
@@ -206,53 +282,29 @@ function App() {
 
   return (
     <div
-      className="min-h-screen bg-cover bg-center bg-fixed flex items-center justify-center p-4"
+      className="app-container"
       style={{
         backgroundImage: `url(${backgroundImageUrl})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
       }}
     >
-      <div
-        className="w-full max-w-[800px] bg-white shadow-2xl p-6 md:p-8 lg:p-10"
-        style={{
-          borderRadius: "16px",
-          backdropFilter: "blur(10px)",
-          backgroundColor: "rgba(255, 255, 255, 0.98)",
-        }}
-      >
-        {/* Content Flex: Title/Description on left, Form on right with equal width */}
-        <div className="flex lg:flex-row gap-6 lg:gap-8 items-center">
-          {/* Title and Description Section - Left Side */}
-          <div className="flex-1 text-center lg:text-left flex flex-col justify-center">
-            <h1
-              className="text-4xl md:text-5xl lg:text-6xl font-bold text-[#4682B4] mb-4"
-              style={{ fontFamily: "'Caveat Brush', cursive", fontWeight: 400 }}
-            >
-              Where do you want to stay?
-            </h1>
-            <p
-              className="text-sm md:text-base text-black"
-              style={{ fontFamily: "'Lato', sans-serif" }}
-            >
+      <div className="main-container">
+        <div className="content-layout">
+          <div className="title-section">
+            <h1 className="title">Where do you want to stay?</h1>
+            <p className="subtitle">
               Discover stays that fit your needs—whether you're planning a
               weekend escape, a family holiday, or a long-term adventure.
             </p>
           </div>
 
-          {/* Search Form - Right Side */}
-          <div className="flex-1 w-full">
+          <div className="form-section">
             <form
               onSubmit={handleSubmit}
-              className="space-y-4 p-6 md:p-8"
+              className="search-form"
               aria-label="Accommodation search form"
             >
-              <div>
-                <label
-                  htmlFor="location"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+              <div className="form-group">
+                <label htmlFor="location" className="form-label">
                   Location
                 </label>
                 <input
@@ -261,20 +313,19 @@ function App() {
                   name="location"
                   value={formData.location}
                   onChange={handleChange}
-                  placeholder="Enter destination"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4682B4] focus:border-transparent outline-none"
+                  placeholder="e.g., New York, London, Paris"
+                  className="form-input"
                   required
-                  aria-required="true"
                 />
+                <p className="form-hint">
+                  Enter city name or code (NYC, LON, PAR, etc.)
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="dateFrom"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Date From
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label htmlFor="dateFrom" className="form-label">
+                    Check-in
                   </label>
                   <input
                     type="date"
@@ -283,18 +334,14 @@ function App() {
                     value={formData.dateFrom}
                     onChange={handleChange}
                     min={new Date().toISOString().split("T")[0]}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4682B4] focus:border-transparent outline-none"
+                    className="form-input"
                     required
-                    aria-required="true"
                   />
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="dateUntil"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Date Until
+                <div className="form-group">
+                  <label htmlFor="dateUntil" className="form-label">
+                    Check-out
                   </label>
                   <input
                     type="date"
@@ -306,19 +353,15 @@ function App() {
                       formData.dateFrom ||
                       new Date().toISOString().split("T")[0]
                     }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4682B4] focus:border-transparent outline-none"
+                    className="form-input"
                     required
-                    aria-required="true"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="adults"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label htmlFor="adults" className="form-label">
                     Adults
                   </label>
                   <input
@@ -328,18 +371,14 @@ function App() {
                     value={formData.adults}
                     onChange={handleChange}
                     min="1"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4682B4] focus:border-transparent outline-none"
+                    className="form-input"
                     required
-                    aria-required="true"
                   />
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="kids"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Number of Children
+                <div className="form-group">
+                  <label htmlFor="kids" className="form-label">
+                    Children
                   </label>
                   <input
                     type="number"
@@ -348,41 +387,34 @@ function App() {
                     value={formData.kids}
                     onChange={handleChange}
                     min="0"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4682B4] focus:border-transparent outline-none"
-                    required
-                    aria-required="true"
+                    className="form-input"
                   />
                 </div>
               </div>
 
               {formData.kids > 0 && (
-                <div className="space-y-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Children Ages
-                  </label>
+                <div className="children-ages">
+                  <label className="form-label">Children Ages</label>
                   {Array.from({ length: formData.kids }, (_, index) => (
-                    <div key={index}>
+                    <div key={index} className="form-group">
                       <label
                         htmlFor={`childAge-${index}`}
-                        className="block text-xs font-medium text-gray-600 mb-1"
+                        className="form-label-small"
                       >
                         Child {index + 1} Age
                       </label>
                       <select
                         id={`childAge-${index}`}
                         name={`childAge-${index}`}
-                        value={formData.childAges[index] || 0}
+                        value={formData.childAges[index] || ""}
                         onChange={handleChange}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4682B4] focus:border-transparent outline-none"
-                        required
-                        aria-required="true"
+                        className="form-select"
                       >
+                        <option value="">Select age</option>
                         {Array.from({ length: 17 }, (_, i) => (
-                          <option key={i} value={i}>
-                            {i === 0
-                              ? "Select age"
-                              : `${i} ${i === 1 ? "year" : "years"} old`}
-                          </option>
+                          <option key={i + 1} value={i + 1}>{`${i + 1} ${
+                            i === 0 ? "year" : "years"
+                          } old`}</option>
                         ))}
                       </select>
                     </div>
@@ -390,11 +422,8 @@ function App() {
                 </div>
               )}
 
-              <div>
-                <label
-                  htmlFor="accommodationType"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
+              <div className="form-group">
+                <label htmlFor="accommodationType" className="form-label">
                   Accommodation Type
                 </label>
                 <select
@@ -402,167 +431,272 @@ function App() {
                   name="accommodationType"
                   value={formData.accommodationType}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#4682B4] focus:border-transparent outline-none"
-                  required
-                  aria-required="true"
+                  className="form-select"
                 >
                   <option value="Hotel">Hotel</option>
-                  <option value="Airbnb">Airbnb</option>
-                  <option value="Cabin">Cabin</option>
-                  <option value="Campsite">Campsite</option>
+                  <option value="Resort">Resort</option>
+                  <option value="Apartment">Apartment</option>
+                  <option value="Villa">Villa</option>
                 </select>
               </div>
 
-              <button
-                type="submit"
-                className="w-full bg-[#4682B4] text-white py-3 px-6 rounded-lg font-semibold text-lg hover:bg-[#3a6a94] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#4682B4] focus:ring-offset-2"
-                aria-label="Search for accommodations"
-              >
-                Search
+              <button type="submit" className="submit-button">
+                Search Hotels
               </button>
             </form>
           </div>
         </div>
 
-        {/* Loading Animation */}
         {loading && (
-          <div
-            className="mt-8 flex justify-center items-center space-x-6"
-            aria-live="polite"
-            aria-label="Loading accommodations"
-          >
-            <div
-              className="animate-bounce"
-              style={{ animationDelay: "0s", width: "48px", height: "48px" }}
-            >
-              <img
-                src={airplaneIcon}
-                alt="Airplane"
-                className="w-full h-full"
-              />
+          <div className="loading-container" aria-live="polite">
+            <div className="loading-icon">
+              <img src={airplaneIcon} alt="Searching" />
             </div>
-            <div
-              className="animate-bounce"
-              style={{ animationDelay: "0.2s", width: "48px", height: "48px" }}
-            >
-              <img src={carIcon} alt="Car" className="w-full h-full" />
+            <div className="loading-icon">
+              <img src={carIcon} alt="Searching" />
             </div>
-            <div
-              className="animate-bounce"
-              style={{ animationDelay: "0.4s", width: "48px", height: "48px" }}
-            >
-              <img src={trainIcon} alt="Train" className="w-full h-full" />
+            <div className="loading-icon">
+              <img src={trainIcon} alt="Searching" />
             </div>
           </div>
         )}
 
-        {/* Results Section */}
         {!loading && searched && results.length > 0 && (
-          <div className="mt-8 space-y-6" aria-label="Search results">
-            <h2
-              className="text-2xl font-bold text-gray-800 mb-4"
-              style={{ fontFamily: "'Lato', sans-serif" }}
-            >
-              Search Results
+          <div className="results-section" aria-label="Search results">
+            <h2 className="results-title">
+              Available Hotels in {cityDisplay} ({filteredResults.length} of{" "}
+              {results.length})
             </h2>
-            {results.map((result) => (
-              <div
-                key={result.id}
-                className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow duration-200 bg-white"
-              >
-                <div className="flex flex-col md:flex-row">
-                  {/* Photo */}
-                  <div className="md:w-1/3 h-48 md:h-auto">
-                    <img
-                      src={result.photo}
-                      alt={result.name}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  </div>
 
-                  {/* Content */}
-                  <div className="md:w-2/3 p-4 md:p-6 flex flex-col">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-1">
-                          {result.name}
-                        </h3>
-                        <p className="text-gray-600 text-sm mb-2">
-                          <span className="font-medium">{result.type}</span> •{" "}
-                          {result.location}
-                        </p>
+            {/* Filters */}
+            <div className="filters-container">
+              <div className="filter-group">
+                <label htmlFor="sortBy" className="filter-label">
+                  Sort by:
+                </label>
+                <select
+                  id="sortBy"
+                  name="sortBy"
+                  value={filters.sortBy}
+                  onChange={handleFilterChange}
+                  className="filter-select"
+                >
+                  <option value="popularity">Popularity</option>
+                  <option value="rating">Rating (High to Low)</option>
+                  <option value="price-low">Price (Low to High)</option>
+                  <option value="price-high">Price (High to Low)</option>
+                </select>
+              </div>
+
+              <div className="filter-group">
+                <label htmlFor="minPrice" className="filter-label">
+                  Min Price:
+                </label>
+                <input
+                  type="number"
+                  id="minPrice"
+                  name="minPrice"
+                  value={filters.minPrice}
+                  onChange={handleFilterChange}
+                  placeholder="$0"
+                  className="filter-input"
+                />
+              </div>
+
+              <div className="filter-group">
+                <label htmlFor="maxPrice" className="filter-label">
+                  Max Price:
+                </label>
+                <input
+                  type="number"
+                  id="maxPrice"
+                  name="maxPrice"
+                  value={filters.maxPrice}
+                  onChange={handleFilterChange}
+                  placeholder="$1000"
+                  className="filter-input"
+                />
+              </div>
+
+              <div className="filter-group">
+                <label htmlFor="minRating" className="filter-label">
+                  Min Rating:
+                </label>
+                <select
+                  id="minRating"
+                  name="minRating"
+                  value={filters.minRating}
+                  onChange={handleFilterChange}
+                  className="filter-select"
+                >
+                  <option value="">Any</option>
+                  <option value="4">4+ Stars</option>
+                  <option value="4.5">4.5+ Stars</option>
+                  <option value="5">5 Stars</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Google Map with all hotels */}
+            {filteredResults.some((r) => r.latitude && r.longitude) && (
+              <div className="main-map-container">
+                <h3 className="map-title">Select a hotel from the map:</h3>
+                <div className="main-map-wrapper">
+                  <iframe
+                    className="main-map-embed"
+                    title="All hotels map"
+                    frameBorder="0"
+                    style={{ border: 0 }}
+                    src={`https://www.google.com/maps?q=${filteredResults
+                      .filter((r) => r.latitude && r.longitude)
+                      .map((r) => `${r.latitude},${r.longitude}`)
+                      .join("|")}&output=embed`}
+                    allowFullScreen
+                  ></iframe>
+                </div>
+                <p className="map-hint">
+                  Click on a hotel marker to view details, or scroll down to see
+                  all results
+                </p>
+              </div>
+            )}
+
+            {filteredResults.length === 0 ? (
+              <div className="no-results" aria-live="polite">
+                <p className="no-results-title">No hotels match your filters</p>
+                <p className="no-results-text">
+                  Try adjusting your filter criteria.
+                </p>
+              </div>
+            ) : (
+              filteredResults.map((result) => (
+                <div
+                  key={result.id}
+                  className={`result-card ${
+                    selectedHotel?.id === result.id ? "selected" : ""
+                  }`}
+                  onClick={() => setSelectedHotel(result)}
+                >
+                  <div className="result-content">
+                    {result.photo ? (
+                      <div className="result-image-container">
+                        <img
+                          src={result.photo}
+                          alt={result.name}
+                          className="result-image"
+                          loading="lazy"
+                        />
                       </div>
-                      <span className="text-lg font-bold text-[#4682B4] whitespace-nowrap ml-4">
-                        {result.price}
-                      </span>
-                    </div>
-
-                    <p className="text-gray-700 mb-3 text-sm">
-                      {result.description}
-                    </p>
-
-                    {/* Rating and Review Count */}
-                    <div className="flex items-center mb-3">
-                      <div className="flex items-center">
-                        <span className="text-yellow-500 text-lg">★</span>
-                        <span className="ml-1 text-gray-700 font-semibold">
-                          {result.rating}
-                        </span>
-                      </div>
-                      <span className="ml-2 text-gray-500 text-sm">
-                        ({result.reviewCount} reviews)
-                      </span>
-                    </div>
-
-                    {/* Reviews Preview */}
-                    {result.reviews && result.reviews.length > 0 && (
-                      <div className="mb-4 space-y-2">
-                        <p className="text-sm font-semibold text-gray-700">
-                          Recent Reviews:
-                        </p>
-                        {result.reviews.slice(0, 2).map((review, idx) => (
-                          <div
-                            key={idx}
-                            className="bg-gray-50 p-2 rounded text-sm"
-                          >
-                            <div className="flex items-center mb-1">
-                              <span className="font-medium text-gray-800">
-                                {review.author}
-                              </span>
-                              <span className="ml-2 text-yellow-500">
-                                {"★".repeat(review.rating)}
-                                {"☆".repeat(5 - review.rating)}
-                              </span>
-                            </div>
-                            <p className="text-gray-600 italic">
-                              "{review.comment}"
-                            </p>
-                          </div>
-                        ))}
+                    ) : (
+                      <div className="result-image-container no-image">
+                        <div className="no-image-placeholder">
+                          No Image Available
+                        </div>
                       </div>
                     )}
 
-                    {/* Book Now Link */}
-                    <a
-                      href={result.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block bg-[#4682B4] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#3a6a94] transition-colors duration-200 text-center mt-auto"
-                      aria-label={`Book ${result.name} on booking site`}
-                    >
-                      View Details & Book
-                    </a>
+                    <div className="result-details">
+                      <div className="result-header">
+                        <div>
+                          <h3 className="result-name">{result.name}</h3>
+                          <p className="result-meta">
+                            <span className="result-meta-type">
+                              {result.type}
+                            </span>{" "}
+                            •{" "}
+                            {typeof result.location === "string"
+                              ? result.location
+                              : result.location?.address ||
+                                result.location?.name ||
+                                "Location not available"}
+                          </p>
+                        </div>
+                        <span className="result-price">{result.price}</span>
+                      </div>
+
+                      <p className="result-description">{result.description}</p>
+
+                      <div className="result-rating">
+                        <div>
+                          <span className="rating-stars">★</span>
+                          <span className="rating-value">
+                            {typeof result.rating === "number"
+                              ? result.rating.toFixed(1)
+                              : result.rating}
+                          </span>
+                        </div>
+                        <span className="rating-count">
+                          ({result.reviewCount} reviews)
+                        </span>
+                      </div>
+
+                      {result.reviews && result.reviews.length > 0 && (
+                        <div className="reviews-section">
+                          <p className="reviews-title">Recent Reviews:</p>
+                          {result.reviews.slice(0, 2).map((review, idx) => (
+                            <div key={idx} className="review-item">
+                              <div className="review-header">
+                                <span className="review-author">
+                                  {review.author}
+                                </span>
+                                <span className="review-stars">
+                                  {"★".repeat(Math.min(5, review.rating))}
+                                  {"☆".repeat(Math.max(0, 5 - review.rating))}
+                                </span>
+                              </div>
+                              <p className="review-comment">
+                                "{review.comment}"
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {result.latitude && result.longitude && (
+                        <div className="map-container">
+                          <iframe
+                            className="map-embed"
+                            title={`Map of ${result.name}`}
+                            frameBorder="0"
+                            style={{ border: 0 }}
+                            src={`https://www.google.com/maps?q=${result.latitude},${result.longitude}&output=embed&zoom=15`}
+                            allowFullScreen
+                          ></iframe>
+                          <div className="map-link">
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${result.latitude},${result.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="map-link-text"
+                            >
+                              View on Google Maps
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
+                      <a
+                        href={result.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="book-button"
+                      >
+                        View Details & Book
+                      </a>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         )}
 
         {!loading && searched && results.length === 0 && (
-          <div className="mt-8 text-center text-gray-600" aria-live="polite">
-            <p>No accommodations found. Please try a different search.</p>
+          <div className="no-results" aria-live="polite">
+            <p className="no-results-title">No hotels found</p>
+            <p className="no-results-text">
+              Try adjusting your search dates or choosing a different location.
+            </p>
           </div>
         )}
       </div>
