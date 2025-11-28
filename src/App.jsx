@@ -8,6 +8,7 @@ function App() {
     adults: 1,
     kids: 0,
     rooms: 1,
+    childrenAges: [],
   });
   const [results, setResults] = useState([]);
   const [filteredResults, setFilteredResults] = useState([]);
@@ -19,6 +20,9 @@ function App() {
     minPrice: "",
     maxPrice: "",
     minRating: "",
+    minRooms: "",
+    minBeds: "",
+    suburb: "",
   });
 
   const backgroundImageUrl =
@@ -26,11 +30,44 @@ function App() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === "kids") {
+      const numKids = parseInt(value) || 0;
+      const currentAges = formData.childrenAges;
+
+      if (numKids > currentAges.length) {
+        const newAges = [
+          ...currentAges,
+          ...Array(numKids - currentAges.length).fill(""),
+        ];
+        setFormData((prev) => ({
+          ...prev,
+          kids: numKids,
+          childrenAges: newAges,
+        }));
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          kids: numKids,
+          childrenAges: currentAges.slice(0, numKids),
+        }));
+      }
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: ["adults", "rooms"].includes(name)
+          ? parseInt(value) || 0
+          : value,
+      }));
+    }
+  };
+
+  const handleChildAgeChange = (index, age) => {
+    const newAges = [...formData.childrenAges];
+    newAges[index] = age === "" ? "" : parseInt(age);
     setFormData((prev) => ({
       ...prev,
-      [name]: ["adults", "kids", "rooms"].includes(name)
-        ? parseInt(value) || 0
-        : value,
+      childrenAges: newAges,
     }));
   };
 
@@ -50,6 +87,27 @@ function App() {
     if (filters.minRating) {
       filtered = filtered.filter(
         (r) => r.rating >= parseFloat(filters.minRating)
+      );
+    }
+    if (filters.minRooms) {
+      filtered = filtered.filter(
+        (r) => r.roomCount && r.roomCount >= parseInt(filters.minRooms)
+      );
+    }
+    if (filters.minBeds) {
+      filtered = filtered.filter(
+        (r) => r.bedCount && r.bedCount >= parseInt(filters.minBeds)
+      );
+    }
+    if (filters.suburb) {
+      filtered = filtered.filter(
+        (r) =>
+          r.location?.name
+            ?.toLowerCase()
+            .includes(filters.suburb.toLowerCase()) ||
+          r.location?.address
+            ?.toLowerCase()
+            .includes(filters.suburb.toLowerCase())
       );
     }
 
@@ -116,24 +174,29 @@ function App() {
     return data;
   };
 
-  const searchHotels = async (destId, checkIn, checkOut, adults, rooms) => {
+  const searchHotels = async (
+    destId,
+    checkIn,
+    checkOut,
+    adults,
+    rooms,
+    childrenAges
+  ) => {
     const RAPIDAPI_KEY = import.meta.env.VITE_RAPIDAPI_KEY;
 
     if (!RAPIDAPI_KEY) {
       throw new Error("API key is missing. Check your .env file");
     }
 
-    const url = `https://booking-com.p.rapidapi.com/v1/hotels/search?
-  dest_id=${destId}
-  &dest_type=city
-  &checkin_date=${checkIn}
-  &checkout_date=${checkOut}
-  &adults_number=${adults}
-  &room_number=${rooms}
-  &units=metric
-  &locale=en-gb
-  &order_by=popularity
-  &filter_by_currency=AUD`.replace(/\s+/g, "");
+    let url = `https://booking-com.p.rapidapi.com/v1/hotels/search?dest_id=${destId}&dest_type=city&checkin_date=${checkIn}&checkout_date=${checkOut}&adults_number=${adults}&room_number=${rooms}&units=metric&locale=en-gb&order_by=popularity&filter_by_currency=AUD`;
+
+    const validAges = childrenAges.filter((age) => age !== "" && age !== null);
+    if (validAges.length > 0) {
+      const childrenAgesParam = validAges
+        .map((age, i) => `children_age=${age}`)
+        .join("&");
+      url += `&children_number=${validAges.length}&${childrenAgesParam}`;
+    }
 
     const response = await fetch(url, {
       method: "GET",
@@ -163,6 +226,14 @@ function App() {
       !formData.adults
     ) {
       alert("Please fill in all required fields");
+      return;
+    }
+
+    if (
+      formData.kids > 0 &&
+      formData.childrenAges.some((age) => age === "" || age === null)
+    ) {
+      alert("Please enter ages for all children (0-16 years)");
       return;
     }
 
@@ -197,7 +268,8 @@ function App() {
         formData.dateFrom,
         formData.dateUntil,
         formData.adults,
-        formData.rooms
+        formData.rooms,
+        formData.childrenAges
       );
 
       if (!hotelsData || !hotelsData.result || hotelsData.result.length === 0) {
@@ -236,6 +308,15 @@ function App() {
         url:
           hotel.url || `https://www.booking.com/hotel/${hotel.hotel_id}.html`,
         distance: hotel.distance ? `${hotel.distance} km from center` : null,
+        roomCount: hotel.unit_configuration_label
+          ? (hotel.unit_configuration_label.match(/\d+/g) || [1])[0]
+          : 1,
+        bedCount: hotel.unit_configuration_label
+          ? (hotel.unit_configuration_label.match(/\d+/g) || [1]).reduce(
+              (a, b) => parseInt(a) + parseInt(b),
+              0
+            )
+          : 1,
       }));
 
       console.log("Hotels found:", transformedResults.length);
@@ -258,246 +339,403 @@ function App() {
         backgroundSize: "cover",
         backgroundPosition: "center",
         minHeight: "100vh",
-        padding: "20px",
+        padding: "40px 20px",
       }}
     >
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        <div
-          style={{ textAlign: "center", marginBottom: "40px", color: "white" }}
-        >
-          <h1
-            style={{
-              fontSize: "48px",
-              fontWeight: "bold",
-              marginBottom: "16px",
-            }}
-          >
-            Where do you want to stay?
-          </h1>
-          <p style={{ fontSize: "18px", opacity: 0.9 }}>
-            Discover stays that fit your needs—whether you're planning a weekend
-            escape, a family holiday, or a long-term adventure.
-          </p>
-        </div>
+      <style>{`
+        @media (min-width: 768px) {
+          .hero-section {
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 60px !important;
+          }
+          .hero-text {
+            flex: 1 !important;
+            text-align: left !important;
+          }
+          .search-form-container {
+            flex: 1 !important;
+          }
+        }
+        @media (min-width: 640px) {
+          .date-grid {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+          }
+          .guest-grid {
+            grid-template-columns: 1fr 1fr 1fr !important;
+            gap: 20px !important;
+          }
+        }
+        @media (min-width: 768px) {
+          .filter-grid {
+            grid-template-columns: repeat(3, 1fr) !important;
+          }
+        }
+      `}</style>
 
+      <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "0 20px" }}>
         <div
           style={{
-            backgroundColor: "white",
-            borderRadius: "12px",
-            padding: "32px",
-            marginBottom: "40px",
-            boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "40px",
+            marginBottom: "60px",
           }}
+          className="hero-section"
         >
-          <div>
-            <div style={{ marginBottom: "20px" }}>
-              <label
+          <div
+            style={{ textAlign: "center", color: "white" }}
+            className="hero-text"
+          >
+            <h1
+              style={{
+                fontSize: "clamp(3rem, 6vw, 5rem)",
+                fontFamily: "'Caveat Brush', cursive",
+                fontWeight: 400,
+                color: "#4682B4",
+                marginBottom: "24px",
+                lineHeight: 1.1,
+                textShadow: "2px 2px 4px rgba(0,0,0,0.2)",
+              }}
+            >
+              Where do you want to stay?
+            </h1>
+            <p
+              style={{
+                fontSize: "clamp(16px, 2vw, 20px)",
+                opacity: 0.95,
+                lineHeight: 1.6,
+              }}
+            >
+              Discover stays that fit your needs—whether you're planning a
+              weekend escape, a family holiday, or a long-term adventure.
+            </p>
+          </div>
+
+          <div
+            className="search-form-container"
+            style={{
+              backgroundColor: "white",
+              borderRadius: "16px",
+              padding: "32px",
+              width: "100%",
+              boxSizing: "border-box",
+              boxShadow: "0 8px 16px rgba(0,0,0,0.15)",
+            }}
+          >
+            <div>
+              <div style={{ marginBottom: "24px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "8px",
+                    fontWeight: "600",
+                    fontSize: "15px",
+                  }}
+                >
+                  Location
+                </label>
+                <input
+                  type="text"
+                  name="location"
+                  value={formData.location}
+                  onChange={handleChange}
+                  placeholder="e.g., New York, London, Paris"
+                  style={{
+                    width: "100%",
+                    padding: "14px",
+                    border: "1px solid #ddd",
+                    borderRadius: "8px",
+                    fontSize: "16px",
+                    boxSizing: "border-box",
+                  }}
+                />
+                <p
+                  style={{ fontSize: "14px", color: "#666", marginTop: "6px" }}
+                >
+                  Enter city name
+                </p>
+              </div>
+
+              <div
                 style={{
-                  display: "block",
-                  marginBottom: "8px",
-                  fontWeight: "600",
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: "16px",
+                  marginBottom: "24px",
+                  width: "100%",
+                  boxSizing: "border-box",
                 }}
+                className="date-grid"
               >
-                Location
-              </label>
-              <input
-                type="text"
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-                placeholder="e.g., New York, London, Paris"
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: "600",
+                      fontSize: "15px",
+                    }}
+                  >
+                    Check-in
+                  </label>
+                  <input
+                    type="date"
+                    name="dateFrom"
+                    value={formData.dateFrom}
+                    onChange={handleChange}
+                    min={new Date().toISOString().split("T")[0]}
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      border: "1px solid #ddd",
+                      borderRadius: "8px",
+                      fontSize: "16px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: "600",
+                      fontSize: "15px",
+                    }}
+                  >
+                    Check-out
+                  </label>
+                  <input
+                    type="date"
+                    name="dateUntil"
+                    value={formData.dateUntil}
+                    onChange={handleChange}
+                    min={
+                      formData.dateFrom ||
+                      new Date().toISOString().split("T")[0]
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      border: "1px solid #ddd",
+                      borderRadius: "8px",
+                      fontSize: "16px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: "16px",
+                  marginBottom: "24px",
+                }}
+                className="guest-grid"
+              >
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: "600",
+                      fontSize: "15px",
+                    }}
+                  >
+                    Adults
+                  </label>
+                  <input
+                    type="number"
+                    name="adults"
+                    value={formData.adults}
+                    onChange={handleChange}
+                    min="1"
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      border: "1px solid #ddd",
+                      borderRadius: "8px",
+                      fontSize: "16px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: "600",
+                      fontSize: "15px",
+                    }}
+                  >
+                    Children
+                  </label>
+                  <input
+                    type="number"
+                    name="kids"
+                    value={formData.kids === 0 ? "" : formData.kids}
+                    onChange={handleChange}
+                    min="0"
+                    placeholder="0"
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      border: "1px solid #ddd",
+                      borderRadius: "8px",
+                      fontSize: "16px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: "600",
+                      fontSize: "15px",
+                    }}
+                  >
+                    Rooms
+                  </label>
+                  <input
+                    type="number"
+                    name="rooms"
+                    value={formData.rooms}
+                    onChange={handleChange}
+                    min="1"
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      border: "1px solid #ddd",
+                      borderRadius: "8px",
+                      fontSize: "16px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {formData.kids > 0 && (
+                <div style={{ marginBottom: "24px" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "12px",
+                      fontWeight: "600",
+                      fontSize: "15px",
+                    }}
+                  >
+                    Children's Ages (0-16 years)
+                  </label>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fill, minmax(90px, 1fr))",
+                      gap: "12px",
+                    }}
+                  >
+                    {Array.from({ length: formData.kids }).map((_, index) => (
+                      <div key={index}>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: "13px",
+                            marginBottom: "6px",
+                            color: "#666",
+                          }}
+                        >
+                          Child {index + 1}
+                        </label>
+                        <select
+                          value={
+                            formData.childrenAges[index] === ""
+                              ? ""
+                              : formData.childrenAges[index]
+                          }
+                          onChange={(e) =>
+                            handleChildAgeChange(index, e.target.value)
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "12px",
+                            border: "1px solid #ddd",
+                            borderRadius: "8px",
+                            fontSize: "16px",
+                            boxSizing: "border-box",
+                            backgroundColor: "white",
+                          }}
+                        >
+                          <option value="">Age</option>
+                          {Array.from({ length: 17 }, (_, i) => (
+                            <option key={i} value={i}>
+                              {i}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleSubmit}
                 style={{
                   width: "100%",
-                  padding: "12px",
-                  border: "1px solid #ddd",
-                  borderRadius: "6px",
-                  fontSize: "16px",
+                  padding: "18px",
+                  backgroundColor: "#2563eb",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "18px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  transition: "background-color 0.2s",
                 }}
-              />
-              <p style={{ fontSize: "14px", color: "#666", marginTop: "4px" }}>
-                Enter city name
-              </p>
+                onMouseOver={(e) =>
+                  (e.target.style.backgroundColor = "#1d4ed8")
+                }
+                onMouseOut={(e) => (e.target.style.backgroundColor = "#2563eb")}
+              >
+                Search Hotels
+              </button>
             </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "20px",
-                marginBottom: "20px",
-              }}
-            >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "8px",
-                    fontWeight: "600",
-                  }}
-                >
-                  Check-in
-                </label>
-                <input
-                  type="date"
-                  name="dateFrom"
-                  value={formData.dateFrom}
-                  onChange={handleChange}
-                  min={new Date().toISOString().split("T")[0]}
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    border: "1px solid #ddd",
-                    borderRadius: "6px",
-                    fontSize: "16px",
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "8px",
-                    fontWeight: "600",
-                  }}
-                >
-                  Check-out
-                </label>
-                <input
-                  type="date"
-                  name="dateUntil"
-                  value={formData.dateUntil}
-                  onChange={handleChange}
-                  min={
-                    formData.dateFrom || new Date().toISOString().split("T")[0]
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    border: "1px solid #ddd",
-                    borderRadius: "6px",
-                    fontSize: "16px",
-                  }}
-                />
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr",
-                gap: "20px",
-                marginBottom: "20px",
-              }}
-            >
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "8px",
-                    fontWeight: "600",
-                  }}
-                >
-                  Adults
-                </label>
-                <input
-                  type="number"
-                  name="adults"
-                  value={formData.adults}
-                  onChange={handleChange}
-                  min="1"
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    border: "1px solid #ddd",
-                    borderRadius: "6px",
-                    fontSize: "16px",
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "8px",
-                    fontWeight: "600",
-                  }}
-                >
-                  Children
-                </label>
-                <input
-                  type="number"
-                  name="kids"
-                  value={formData.kids}
-                  onChange={handleChange}
-                  min="0"
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    border: "1px solid #ddd",
-                    borderRadius: "6px",
-                    fontSize: "16px",
-                  }}
-                />
-              </div>
-
-              <div>
-                <label
-                  style={{
-                    display: "block",
-                    marginBottom: "8px",
-                    fontWeight: "600",
-                  }}
-                >
-                  Rooms
-                </label>
-                <input
-                  type="number"
-                  name="rooms"
-                  value={formData.rooms}
-                  onChange={handleChange}
-                  min="1"
-                  style={{
-                    width: "100%",
-                    padding: "12px",
-                    border: "1px solid #ddd",
-                    borderRadius: "6px",
-                    fontSize: "16px",
-                  }}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={handleSubmit}
-              style={{
-                width: "100%",
-                padding: "16px",
-                backgroundColor: "#2563eb",
-                color: "white",
-                border: "none",
-                borderRadius: "6px",
-                fontSize: "18px",
-                fontWeight: "600",
-                cursor: "pointer",
-              }}
-            >
-              Search Hotels
-            </button>
           </div>
         </div>
 
         {loading && (
-          <div style={{ textAlign: "center", padding: "40px", color: "white" }}>
-            <div style={{ fontSize: "24px" }}>Searching for hotels...</div>
+          <div
+            style={{
+              textAlign: "center",
+              padding: "60px 20px",
+              color: "white",
+            }}
+          >
+            <div style={{ fontSize: "24px", fontWeight: "500" }}>
+              Searching for hotels...
+            </div>
           </div>
         )}
 
         {!loading && searched && results.length > 0 && (
           <div>
             <h2
-              style={{ color: "white", fontSize: "32px", marginBottom: "20px" }}
+              style={{
+                color: "white",
+                fontSize: "36px",
+                marginBottom: "30px",
+                fontWeight: "700",
+              }}
             >
               Available Hotels in {cityDisplay} ({filteredResults.length} of{" "}
               {results.length})
@@ -505,28 +743,235 @@ function App() {
 
             <div
               style={{
-                display: "flex",
-                gap: "16px",
-                marginBottom: "20px",
-                flexWrap: "wrap",
+                backgroundColor: "white",
+                borderRadius: "16px",
+                padding: "32px",
+                marginBottom: "30px",
+                boxShadow: "0 8px 16px rgba(0,0,0,0.15)",
               }}
             >
-              <select
-                name="sortBy"
-                value={filters.sortBy}
-                onChange={handleFilterChange}
+              <h3
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid #ddd",
-                  backgroundColor: "white",
+                  marginBottom: "24px",
+                  fontSize: "22px",
+                  fontWeight: "700",
                 }}
               >
-                <option value="popularity">Sort by Popularity</option>
-                <option value="rating">Rating (High to Low)</option>
-                <option value="price-low">Price (Low to High)</option>
-                <option value="price-high">Price (High to Low)</option>
-              </select>
+                Filter Results
+              </h3>
+              <div
+                className="filter-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: "20px",
+                }}
+              >
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontSize: "15px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Sort By
+                  </label>
+                  <select
+                    name="sortBy"
+                    value={filters.sortBy}
+                    onChange={handleFilterChange}
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #ddd",
+                      backgroundColor: "white",
+                      fontSize: "15px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <option value="popularity">Popularity</option>
+                    <option value="rating">Rating (High to Low)</option>
+                    <option value="price-low">Price (Low to High)</option>
+                    <option value="price-high">Price (High to Low)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontSize: "15px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Min Rating
+                  </label>
+                  <input
+                    type="number"
+                    name="minRating"
+                    value={filters.minRating}
+                    onChange={handleFilterChange}
+                    placeholder="e.g., 4.0"
+                    min="0"
+                    max="5"
+                    step="0.1"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #ddd",
+                      fontSize: "15px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontSize: "15px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Min Price (AUD)
+                  </label>
+                  <input
+                    type="number"
+                    name="minPrice"
+                    value={filters.minPrice}
+                    onChange={handleFilterChange}
+                    placeholder="e.g., 100"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #ddd",
+                      fontSize: "15px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontSize: "15px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Max Price (AUD)
+                  </label>
+                  <input
+                    type="number"
+                    name="maxPrice"
+                    value={filters.maxPrice}
+                    onChange={handleFilterChange}
+                    placeholder="e.g., 500"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #ddd",
+                      fontSize: "15px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontSize: "15px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Min Rooms
+                  </label>
+                  <input
+                    type="number"
+                    name="minRooms"
+                    value={filters.minRooms}
+                    onChange={handleFilterChange}
+                    placeholder="e.g., 2"
+                    min="1"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #ddd",
+                      fontSize: "15px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontSize: "15px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Min Beds
+                  </label>
+                  <input
+                    type="number"
+                    name="minBeds"
+                    value={filters.minBeds}
+                    onChange={handleFilterChange}
+                    placeholder="e.g., 2"
+                    min="1"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #ddd",
+                      fontSize: "15px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontSize: "15px",
+                      fontWeight: "600",
+                    }}
+                  >
+                    Suburb/Area
+                  </label>
+                  <input
+                    type="text"
+                    name="suburb"
+                    value={filters.suburb}
+                    onChange={handleFilterChange}
+                    placeholder="e.g., Manhattan, Camden"
+                    style={{
+                      width: "100%",
+                      padding: "12px",
+                      borderRadius: "8px",
+                      border: "1px solid #ddd",
+                      fontSize: "15px",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+              </div>
             </div>
 
             {filteredResults.map((result) => (
@@ -534,74 +979,99 @@ function App() {
                 key={result.id}
                 style={{
                   backgroundColor: "white",
-                  borderRadius: "12px",
-                  padding: "24px",
-                  marginBottom: "20px",
-                  boxShadow: "0 4px 6px rgba(0,0,0,0.1)",
+                  borderRadius: "16px",
+                  padding: "32px",
+                  marginBottom: "30px",
+                  boxShadow: "0 8px 16px rgba(0,0,0,0.15)",
                 }}
               >
                 <div style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
-                  {result.photo ? (
-                    <img
-                      src={result.photo}
-                      alt={result.name}
-                      style={{
-                        width: "200px",
-                        height: "150px",
-                        objectFit: "cover",
-                        borderRadius: "8px",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: "200px",
-                        height: "150px",
-                        backgroundColor: "#f3f4f6",
-                        borderRadius: "8px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "#9ca3af",
-                      }}
-                    >
-                      No Image
-                    </div>
-                  )}
+                  <div style={{ flex: "1 1 250px" }}>
+                    {result.photo ? (
+                      <img
+                        src={result.photo}
+                        alt={result.name}
+                        style={{
+                          width: "100%",
+                          height: "220px",
+                          objectFit: "cover",
+                          borderRadius: "12px",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "220px",
+                          backgroundColor: "#f3f4f6",
+                          borderRadius: "12px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#9ca3af",
+                          fontSize: "16px",
+                        }}
+                      >
+                        No Image
+                      </div>
+                    )}
+                  </div>
 
-                  <div style={{ flex: 1, minWidth: "300px" }}>
+                  <div style={{ flex: "1 1 350px" }}>
                     <div
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
-                        marginBottom: "12px",
+                        marginBottom: "16px",
                         flexWrap: "wrap",
-                        gap: "12px",
+                        gap: "16px",
                       }}
                     >
                       <div>
                         <h3
                           style={{
-                            fontSize: "24px",
+                            fontSize: "26px",
                             fontWeight: "bold",
-                            marginBottom: "8px",
+                            marginBottom: "10px",
                           }}
                         >
                           {result.name}
                         </h3>
-                        <p style={{ color: "#666", marginBottom: "8px" }}>
+                        <p
+                          style={{
+                            color: "#666",
+                            marginBottom: "10px",
+                            fontSize: "15px",
+                          }}
+                        >
                           {result.type} •{" "}
                           {result.location?.address || result.location?.name}
                         </p>
                         {result.distance && (
-                          <p style={{ color: "#666", fontSize: "14px" }}>
+                          <p
+                            style={{
+                              color: "#666",
+                              fontSize: "14px",
+                              marginBottom: "6px",
+                            }}
+                          >
                             📍 {result.distance}
                           </p>
                         )}
+                        <p
+                          style={{
+                            color: "#666",
+                            fontSize: "14px",
+                            marginTop: "6px",
+                          }}
+                        >
+                          🛏️ {result.roomCount} Room(s) • 🛌 {result.bedCount}{" "}
+                          Bed(s)
+                        </p>
                       </div>
                       <div
                         style={{
-                          fontSize: "24px",
+                          fontSize: "28px",
                           fontWeight: "bold",
                           color: "#2563eb",
                         }}
@@ -610,7 +1080,13 @@ function App() {
                       </div>
                     </div>
 
-                    <p style={{ marginBottom: "12px", color: "#444" }}>
+                    <p
+                      style={{
+                        marginBottom: "16px",
+                        color: "#444",
+                        lineHeight: 1.6,
+                      }}
+                    >
                       {result.description}
                     </p>
 
@@ -618,19 +1094,19 @@ function App() {
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: "8px",
-                        marginBottom: "16px",
+                        gap: "10px",
+                        marginBottom: "20px",
                       }}
                     >
-                      <span style={{ color: "#f59e0b", fontSize: "20px" }}>
+                      <span style={{ color: "#f59e0b", fontSize: "22px" }}>
                         ★
                       </span>
-                      <span style={{ fontWeight: "600" }}>
+                      <span style={{ fontWeight: "600", fontSize: "18px" }}>
                         {typeof result.rating === "number"
                           ? result.rating.toFixed(1)
                           : result.rating}
                       </span>
-                      <span style={{ color: "#666" }}>
+                      <span style={{ color: "#666", fontSize: "15px" }}>
                         ({result.reviewCount} reviews)
                       </span>
                     </div>
@@ -641,13 +1117,21 @@ function App() {
                       rel="noopener noreferrer"
                       style={{
                         display: "inline-block",
-                        padding: "12px 24px",
+                        padding: "14px 28px",
                         backgroundColor: "#2563eb",
                         color: "white",
                         textDecoration: "none",
-                        borderRadius: "6px",
+                        borderRadius: "8px",
                         fontWeight: "600",
+                        fontSize: "16px",
+                        transition: "background-color 0.2s",
                       }}
+                      onMouseOver={(e) =>
+                        (e.target.style.backgroundColor = "#1d4ed8")
+                      }
+                      onMouseOut={(e) =>
+                        (e.target.style.backgroundColor = "#2563eb")
+                      }
                     >
                       View Details & Book
                     </a>
@@ -659,11 +1143,23 @@ function App() {
         )}
 
         {!loading && searched && results.length === 0 && (
-          <div style={{ textAlign: "center", padding: "40px", color: "white" }}>
-            <h2 style={{ fontSize: "24px", marginBottom: "12px" }}>
+          <div
+            style={{
+              textAlign: "center",
+              padding: "60px 20px",
+              color: "white",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: "28px",
+                marginBottom: "16px",
+                fontWeight: "600",
+              }}
+            >
               No hotels found
             </h2>
-            <p>
+            <p style={{ fontSize: "18px" }}>
               Try adjusting your search dates or choosing a different location.
             </p>
           </div>
