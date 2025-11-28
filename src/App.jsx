@@ -399,7 +399,7 @@ function App() {
           paddingLeft: "20px",
           paddingRight: "20px",
           position: "relative",
-          minHeight: "100vh",
+          minHeight: searched && results.length > 0 ? "auto" : "100vh",
           boxSizing: "border-box",
         }}
       >
@@ -828,6 +828,44 @@ function App() {
               </div>
             </div>
           )}
+
+          {/* Scroll indicator when results are available */}
+          {!loading && searched && results.length > 0 && (
+            <div
+              style={{
+                textAlign: "center",
+                paddingTop: "20px",
+                paddingBottom: "10px",
+              }}
+            >
+              <style>{`
+              @keyframes scrollBounce {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(8px); }
+              }
+            `}</style>
+              <div
+                style={{
+                  color: "white",
+                  fontSize: "14px",
+                  marginBottom: "8px",
+                  textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                }}
+              >
+                {filteredResults.length} hotels found — Scroll to see results
+              </div>
+              <div
+                style={{
+                  animation: "scrollBounce 1.5s ease-in-out infinite",
+                  fontSize: "24px",
+                  color: "white",
+                  textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                }}
+              >
+                ▼
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -836,7 +874,7 @@ function App() {
         <div
           style={{
             backgroundColor: "white",
-            padding: "60px 20px",
+            padding: "40px 20px 60px",
             minHeight: "50vh",
           }}
         >
