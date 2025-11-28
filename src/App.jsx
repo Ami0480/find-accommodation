@@ -399,6 +399,8 @@ function App() {
           paddingLeft: "20px",
           paddingRight: "20px",
           position: "relative",
+          minHeight: "100vh",
+          boxSizing: "border-box",
         }}
       >
         {/* Logo positioned in top-center on mobile, top-right on desktop */}
