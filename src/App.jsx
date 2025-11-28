@@ -834,35 +834,72 @@ function App() {
             <div
               style={{
                 textAlign: "center",
-                paddingTop: "20px",
-                paddingBottom: "10px",
+                paddingTop: "24px",
+                paddingBottom: "16px",
               }}
             >
               <style>{`
               @keyframes scrollBounce {
                 0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(8px); }
+                50% { transform: translateY(12px); }
+              }
+              @keyframes fadeInDown {
+                0% { opacity: 0; transform: translateY(-10px); }
+                100% { opacity: 1; transform: translateY(0); }
+              }
+              .scroll-indicator {
+                animation: fadeInDown 0.5s ease-out;
+              }
+              .scroll-arrow {
+                animation: scrollBounce 1.2s ease-in-out infinite;
               }
             `}</style>
-              <div
-                style={{
-                  color: "white",
-                  fontSize: "14px",
-                  marginBottom: "8px",
-                  textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
-                }}
-              >
-                {filteredResults.length} hotels found — Scroll to see results
-              </div>
-              <div
-                style={{
-                  animation: "scrollBounce 1.5s ease-in-out infinite",
-                  fontSize: "24px",
-                  color: "white",
-                  textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
-                }}
-              >
-                ▼
+              <div className="scroll-indicator">
+                <div
+                  style={{
+                    color: "white",
+                    fontSize: "16px",
+                    fontWeight: "500",
+                    marginBottom: "12px",
+                    textShadow: "1px 1px 3px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  {filteredResults.length} hotels found
+                </div>
+                <div
+                  className="scroll-arrow"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                >
+                  <svg
+                    width="32"
+                    height="32"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{
+                      filter: "drop-shadow(1px 1px 2px rgba(0,0,0,0.3))",
+                    }}
+                  >
+                    <path d="M12 5v14M5 12l7 7 7-7" />
+                  </svg>
+                  <span
+                    style={{
+                      color: "white",
+                      fontSize: "12px",
+                      textShadow: "1px 1px 2px rgba(0,0,0,0.3)",
+                    }}
+                  >
+                    Scroll down
+                  </span>
+                </div>
               </div>
             </div>
           )}
